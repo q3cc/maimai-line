@@ -263,6 +263,9 @@ QueueEntry {
     | "skipped"
     | "cancelled"
   peopleCount: number
+  joinMode: "private" | "solo" | "match"
+  targetPeopleCount: number
+  groupShareCode?: string
   note?: string
   checkInStatus: "unknown" | "arrived" | "away"
   createdAt: Date
@@ -281,7 +284,7 @@ QueueEntry {
 ```txt
 1. 用户登录后才能排卡。
 2. 同一个用户在同一个队列中只能有一个 waiting/called/playing 状态的排卡。
-3. 支持单人排卡和多人组队排卡。
+3. 加入队列时必须选择加入方式：私人、单刷、直接加入。
 4. 排到后进入 called 状态。
 5. 超过 N 分钟未确认，可由管理员过号。
 6. 上机后进入 playing 状态。
@@ -291,12 +294,26 @@ QueueEntry {
 10. 队列暂停时，用户不能新排卡，但已有队列保留。
 ```
 
-### 5.2 组队排卡
+### 5.2 组队排卡与加入方式
 
-舞萌常见两人同机游玩，因此系统需要支持：
+舞萌默认按两人一组游玩，因此队列默认 `targetPeopleCount = 2`。用户点击“加入队列”时必须先选择一种加入方式：
 
 ```txt
-peopleCount = 1 或 2
+1. 私人 private
+   - 创建一个两人组的私有排卡。
+   - 系统生成分享链接 / 分享码。
+   - 用户自行把链接发给朋友，朋友通过链接加入同一组。
+   - 私人组不会被“直接加入”的陌生玩家自动匹配。
+
+2. 单刷 solo
+   - 创建一个单人组。
+   - peopleCount = 1。
+   - 不等待队友，不参与自动匹配。
+
+3. 直接加入 match
+   - 直接参与系统匹配。
+   - 如果队列中已有可匹配且未满的两人组，则加入该组。
+   - 如果没有可匹配组，则创建一个公开待匹配两人组，等待下一位“直接加入”的玩家。
 ```
 
 可扩展为：
@@ -312,6 +329,18 @@ QueueEntryMember {
   userId?: string
   nickname: string
   role: "owner" | "member"
+}
+```
+
+字段建议：
+
+```ts
+QueueEntry {
+  joinMode: "private" | "solo" | "match"
+  peopleCount: number        // 当前实际人数
+  targetPeopleCount: number  // 目标人数，舞萌默认 2，单刷为 1
+  groupShareCode?: string    // private 模式使用
+  groupMembers: QueueEntryMember[]
 }
 ```
 
@@ -595,6 +624,9 @@ model QueueEntry {
   position      Int
   status        QueueEntryStatus @default(waiting)
   peopleCount   Int @default(1)
+  joinMode      QueueJoinMode @default(match)
+  targetPeopleCount Int @default(2)
+  groupShareCode String?
   note          String?
   checkInStatus CheckInStatus @default(unknown)
 
@@ -635,6 +667,12 @@ enum MachineStatus {
 enum QueueMode {
   single
   group
+}
+
+enum QueueJoinMode {
+  private
+  solo
+  match
 }
 
 enum QueueStatus {
@@ -938,9 +976,17 @@ POST /api/v1/queues/:queueId/entries
 ```json
 {
   "displayName": "玩家A",
-  "peopleCount": 2,
+  "joinMode": "match",
   "note": "和朋友双人"
 }
+```
+
+`joinMode` 说明：
+
+```txt
+private：私人组，目标人数默认为 2，返回分享链接，朋友通过链接加入同一组。
+solo：单刷，固定 peopleCount = 1，targetPeopleCount = 1。
+match：直接加入，优先匹配已有未满公开组；没有可匹配组时创建公开待匹配组。
 ```
 
 响应：
@@ -951,6 +997,10 @@ POST /api/v1/queues/:queueId/entries
   "queueId": "queue_1",
   "position": 7,
   "status": "waiting",
+  "joinMode": "match",
+  "peopleCount": 1,
+  "targetPeopleCount": 2,
+  "groupShareUrl": null,
   "estimatedWaitMinutes": 21
 }
 ```
@@ -961,10 +1011,38 @@ POST /api/v1/queues/:queueId/entries
 1. 开启数据库事务。
 2. 检查队列是否 open。
 3. 检查用户是否已有活跃排卡。
-4. 查询当前最大 position。
-5. 新建 QueueEntry，position = max + 1。
-6. 提交事务。
-7. 发布 WebSocket 队列更新事件。
+4. 根据 joinMode 决定排卡逻辑：
+   - private：创建私有两人组并生成分享码。
+   - solo：创建单人组，直接占一个位置。
+   - match：优先加入已有未满公开组；否则创建公开待匹配组。
+5. 查询当前最大 position。
+6. 新建 QueueEntry 或追加 QueueEntryMember，position = max + 1。
+7. 提交事务。
+8. 发布 WebSocket 队列更新事件。
+```
+
+## 通过私人分享链接加入同组
+
+```http
+POST /api/v1/queue-groups/:groupShareCode/join
+```
+
+请求：
+
+```json
+{
+  "displayName": "朋友B"
+}
+```
+
+处理规则：
+
+```txt
+1. groupShareCode 必须对应 private 模式排卡。
+2. 该组人数未满，舞萌默认最多 2 人。
+3. 当前用户不能已经在该队列存在活跃排卡。
+4. 加入后新增 QueueEntryMember，并更新 peopleCount。
+5. 私人分享加入不改变该组原始 position。
 ```
 
 ## 退出队列
@@ -1463,6 +1541,7 @@ GET    /api/v1/arcades
 GET    /api/v1/arcades/:arcadeId
 GET    /api/v1/queues/:queueId
 POST   /api/v1/queues/:queueId/entries
+POST   /api/v1/queue-groups/:groupShareCode/join
 DELETE /api/v1/queue-entries/:entryId
 PATCH  /api/v1/queue-entries/:entryId
 POST   /api/v1/queue-entries/:entryId/check-in
