@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>maimai-line demo</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Placeholder UI</p>
+        <h1>舞萌排卡 Demo</h1>
+        <p>
+          API demo 已内置 <strong>test机厅</strong> 和
+          <strong>demo_1 / demo_2</strong> 两台机。最终 UI 由 Claude 接手。
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>账号</h2>
+          <p class="hint">第一个注册账号自动成为管理员。</p>
+          <label>
+            邮箱
+            <input id="email" type="email" value="admin@example.com" />
+          </label>
+          <label>
+            用户名
+            <input id="username" type="text" value="admin_demo" />
+          </label>
+          <label>
+            密码
+            <input id="password" type="password" value="password123" />
+          </label>
+          <div class="row">
+            <button id="registerBtn">注册</button>
+            <button id="loginBtn" class="secondary">登录</button>
+          </div>
+          <pre id="authOutput"></pre>
+        </article>
+
+        <article class="card">
+          <h2>机厅 / 队列</h2>
+          <div class="row">
+            <button id="loadArcadesBtn">加载机厅</button>
+            <button id="loadQueueBtn" class="secondary">刷新队列</button>
+          </div>
+          <label>
+            队列 ID
+            <input id="queueId" type="text" value="queue_demo_1" />
+          </label>
+          <pre id="queueOutput"></pre>
+        </article>
+
+        <article class="card">
+          <h2>排卡操作</h2>
+          <label>
+            显示名
+            <input id="displayName" type="text" value="玩家A" />
+          </label>
+          <label>
+            人数
+            <input id="peopleCount" type="number" min="1" max="2" value="1" />
+          </label>
+          <label>
+            备注
+            <input id="note" type="text" value="demo 排卡" />
+          </label>
+          <div class="row wrap">
+            <button id="joinBtn">加入队列</button>
+            <button id="myStateBtn" class="secondary">我的状态</button>
+            <button id="callNextBtn" class="secondary">管理员叫号</button>
+          </div>
+          <pre id="actionOutput"></pre>
+        </article>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
